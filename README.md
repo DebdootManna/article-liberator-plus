@@ -16,7 +16,7 @@ Article Liberator Plus is a Chrome extension that helps users bypass paywalls on
 
 1. Clone this repository:
    ```
-   git clone https://github.com/your-username/article-liberator-plus.git
+   git clone https://github.com/DebdootManna/article-liberator-plus.git
    ```
 
 2. Install dependencies:
