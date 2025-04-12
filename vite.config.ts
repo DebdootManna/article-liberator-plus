@@ -18,12 +18,27 @@ export default defineConfig(({ mode }) => ({
     componentTagger(),
     {
       name: 'copy-manifest',
-      writeBundle() {
+      buildEnd() {
+        // Ensure dist directory exists
+        if (!fs.existsSync('dist')) {
+          fs.mkdirSync('dist', { recursive: true });
+        }
+        
         // Copy manifest.json to dist folder
         fs.copyFileSync(
           resolve(__dirname, 'manifest.json'),
           resolve(__dirname, 'dist', 'manifest.json')
         );
+        
+        // Copy icon files to dist folder
+        ['icon16.png', 'icon48.png', 'icon128.png'].forEach(icon => {
+          if (fs.existsSync(resolve(__dirname, 'public', icon))) {
+            fs.copyFileSync(
+              resolve(__dirname, 'public', icon),
+              resolve(__dirname, 'dist', icon)
+            );
+          }
+        });
       },
     }
   ].filter(Boolean),

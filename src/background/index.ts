@@ -1,4 +1,3 @@
-
 import { ExtensionSettings, SiteRule } from '../types';
 
 // Default settings
@@ -77,45 +76,43 @@ async function initializeExtension() {
   console.log('Article Liberator Plus: Extension initialized');
 }
 
-// In Manifest V3, we use declarativeNetRequest instead of the blocking webRequest
-chrome.webRequest.onBeforeSendHeaders.addListener(
-  (details) => {
-    // We need to return the headers synchronously
-    const requestHeaders = details.requestHeaders || [];
-    const domain = new URL(details.url).hostname.replace('www.', '');
-    
-    // Default to not modifying headers
-    return { requestHeaders };
-  },
-  { urls: ["<all_urls>"] },
-  ["requestHeaders"]
-);
+// Set up declarative net request rules for Manifest V3
+chrome.runtime.onInstalled.addListener(() => {
+  // Initialize extension settings
+  initializeExtension();
+  
+  console.log('Article Liberator Plus: Extension installed and initialized');
+});
 
 // Clear cookies for specified domains
 chrome.webNavigation.onCompleted.addListener(async (details) => {
-  const { settings, rules } = await chrome.storage.local.get(['settings', 'rules']);
-  
-  if (!settings?.enabled || !settings.cookieCleaningEnabled) return;
-  
-  const url = new URL(details.url);
-  const domain = url.hostname.replace('www.', '');
-  
-  // Find matching rule
-  const matchingRule = rules?.find((rule: SiteRule) => 
-    domain.includes(rule.domain) && rule.enabled && rule.removeCookies
-  );
-  
-  if (matchingRule) {
-    const cookies = await chrome.cookies.getAll({ domain: `.${matchingRule.domain}` });
+  try {
+    const { settings, rules } = await chrome.storage.local.get(['settings', 'rules']);
     
-    for (const cookie of cookies) {
-      await chrome.cookies.remove({
-        url: url.origin,
-        name: cookie.name
-      });
+    if (!settings?.enabled || !settings.cookieCleaningEnabled) return;
+    
+    const url = new URL(details.url);
+    const domain = url.hostname.replace('www.', '');
+    
+    // Find matching rule
+    const matchingRule = rules?.find((rule: SiteRule) => 
+      domain.includes(rule.domain) && rule.enabled && rule.removeCookies
+    );
+    
+    if (matchingRule) {
+      const cookies = await chrome.cookies.getAll({ domain: `.${matchingRule.domain}` });
+      
+      for (const cookie of cookies) {
+        await chrome.cookies.remove({
+          url: url.origin,
+          name: cookie.name
+        });
+      }
+      
+      console.log(`Article Liberator Plus: Cleared cookies for ${domain}`);
     }
-    
-    console.log(`Article Liberator Plus: Cleared cookies for ${domain}`);
+  } catch (error) {
+    console.error('Error in webNavigation handler:', error);
   }
 });
 
@@ -124,29 +121,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'BYPASS_ATTEMPT') {
     updateBypassCounter().then(() => {
       console.log('Bypass counter updated');
+    }).catch(err => {
+      console.error('Error updating bypass counter:', err);
     });
     return false; // Don't keep the message channel open
   }
   
   if (message.type === 'GET_RULE_FOR_DOMAIN') {
-    getRuleForDomain(message.domain).then(sendResponse);
+    getRuleForDomain(message.domain).then(sendResponse).catch(err => {
+      console.error('Error getting rule for domain:', err);
+      sendResponse(null);
+    });
     return true; // Keep the message channel open for async response
   }
   
   if (message.type === 'GET_SETTINGS') {
-    getSettings().then(sendResponse);
+    getSettings().then(sendResponse).catch(err => {
+      console.error('Error getting settings:', err);
+      sendResponse(defaultSettings);
+    });
     return true;
   }
   
   if (message.type === 'UPDATE_SETTINGS') {
-    updateSettings(message.settings).then(sendResponse);
+    updateSettings(message.settings).then(sendResponse).catch(err => {
+      console.error('Error updating settings:', err);
+      sendResponse({ success: false, error: err.message });
+    });
     return true;
   }
   
   if (message.type === 'UPDATE_RULE') {
-    updateRule(message.rule).then(sendResponse);
+    updateRule(message.rule).then(sendResponse).catch(err => {
+      console.error('Error updating rule:', err);
+      sendResponse({ success: false, message: err.message });
+    });
     return true;
   }
+  
+  return false;
 });
 
 async function updateBypassCounter() {
@@ -200,11 +213,6 @@ async function updateRule(updatedRule: SiteRule) {
   await chrome.storage.local.set({ rules });
   return { success: true };
 }
-
-// Initialize extension on install
-chrome.runtime.onInstalled.addListener(() => {
-  initializeExtension();
-});
 
 // Log that the background script has initialized
 console.log('Article Liberator Plus: Background script initialized');
