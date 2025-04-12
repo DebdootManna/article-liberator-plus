@@ -1,147 +1,143 @@
 
-// Chrome extension content script
-/// <reference types="chrome" />
+import { SiteRule } from '../types';
 
-// Default values for site-specific selectors
-const DEFAULT_PAYWALL_SELECTORS = [
-  '.paywall',
-  '.subscription-required',
-  '.subscription-banner',
-  '#paywall',
-  '#subscribe-banner',
-  '.modal-paywall',
-  '.register-wall',
-  '.registration-wall'
-];
+// Bypass paywall by removing paywall elements and restoring scrolling
+function bypassPaywall() {
+  // Common paywall selectors
+  const paywallSelectors = [
+    '.paywall',
+    '.subscription-required',
+    '.premium-content',
+    '#paywall-container',
+    '#subscribe-container',
+    '.tp-modal',
+    '.tp-backdrop',
+    '.tp-container',
+    '.fade-in',
+    '.popup-paywall',
+    '#gateway-content',
+    '[class*="paywall"]',
+    '[id*="paywall"]',
+    '[class*="subscribe"]',
+    '[id*="subscribe"]'
+  ];
 
-// Helper function to remove paywall elements
-function removePaywallElements(selectors: string[]) {
-  selectors.forEach(selector => {
+  // Remove paywall elements
+  paywallSelectors.forEach(selector => {
     const elements = document.querySelectorAll(selector);
     elements.forEach(el => {
-      el.remove();
+      if (el instanceof HTMLElement) {
+        el.style.display = 'none';
+      }
     });
   });
-}
 
-// Helper function to enable scrolling
-function enableScrolling() {
-  // Common ways sites disable scrolling
-  document.documentElement.style.overflow = 'auto';
-  document.body.style.overflow = 'auto';
-  document.documentElement.style.position = 'static';
-  document.body.style.position = 'static';
-  
-  // Remove any height restrictions
-  document.documentElement.style.maxHeight = 'none';
-  document.body.style.maxHeight = 'none';
-}
+  // Enable scrolling
+  const htmlElement = document.querySelector('html');
+  if (htmlElement) {
+    htmlElement.style.overflow = 'auto';
+    htmlElement.style.height = 'auto';
+  }
 
-// Helper function to reveal hidden content
-function revealHiddenContent() {
-  // Find elements with blur, hidden overflow, or other hiding techniques
-  const blurredElements = document.querySelectorAll<HTMLElement>(
-    '[style*="blur"], [class*="blur"], [class*="hidden"], [class*="paywall"], [style*="overflow: hidden"]'
-  );
-  
-  blurredElements.forEach(el => {
-    el.style.filter = 'none';
-    el.style.blur = 'none';
-    el.style.webkitFilter = 'none';
-    el.style.overflow = 'visible';
-    el.style.maxHeight = 'none';
-    el.style.opacity = '1';
-    
-    // Remove classes that might be hiding content
-    ['blur', 'hidden', 'paywall', 'restricted'].forEach(className => {
-      el.classList.remove(className);
-    });
+  const bodyElement = document.body;
+  if (bodyElement) {
+    bodyElement.style.overflow = 'auto';
+    bodyElement.style.height = 'auto';
+    bodyElement.style.position = 'static';
+  }
+
+  // Remove blur effects by finding elements with blur or filter styles
+  const allElements = document.querySelectorAll('*');
+  allElements.forEach(el => {
+    if (el instanceof HTMLElement) {
+      const computedStyle = window.getComputedStyle(el);
+      // Check if the element has a blur filter applied
+      if (computedStyle.filter && computedStyle.filter.includes('blur')) {
+        el.style.filter = 'none';
+      }
+      // Check for backdrop-filter
+      if (computedStyle.backdropFilter && computedStyle.backdropFilter.includes('blur')) {
+        el.style.backdropFilter = 'none';
+      }
+    }
   });
+
+  // Show hidden content
+  const hiddenContent = document.querySelectorAll('.hide, [style*="display: none"], [style*="visibility: hidden"]');
+  hiddenContent.forEach(el => {
+    if (el instanceof HTMLElement && !el.className.includes('paywall')) {
+      el.style.display = 'block';
+      el.style.visibility = 'visible';
+      el.style.opacity = '1';
+    }
+  });
+
+  console.log('Article Liberator Plus: Paywall bypassed');
 }
 
-// Main bypass function
-async function bypassPaywall() {
+// Apply site-specific rules
+async function applySiteRules() {
+  const domain = window.location.hostname.replace('www.', '');
+  
   try {
-    console.log('Article Liberator Plus: Attempting to bypass paywall...');
-    
-    // Get domain from current URL
-    const domain = window.location.hostname.replace('www.', '');
-    
-    // Check if we need to apply site-specific rules
-    const message = { type: 'GET_RULE_FOR_DOMAIN', domain };
-    const rule = await new Promise<any>(resolve => {
-      chrome.runtime.sendMessage(message, (response) => {
-        resolve(response);
-      });
-    });
-
-    // Get extension settings
-    const settings = await new Promise<any>(resolve => {
-      chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
-        resolve(response);
-      });
+    // Get rules from extension storage
+    const response = await chrome.runtime.sendMessage({
+      type: 'GET_RULE_FOR_DOMAIN',
+      domain: domain
     });
     
-    if (!settings?.enabled) {
-      console.log('Article Liberator Plus: Extension is disabled');
-      return;
-    }
-    
-    // Apply general bypass methods
-    enableScrolling();
-    revealHiddenContent();
-    
-    // Apply site-specific rules if available
-    if (rule && rule.enabled) {
-      console.log(`Article Liberator Plus: Applying rule for ${rule.name}`);
+    if (response) {
+      const rule = response as SiteRule;
       
-      if (rule.removeElements && rule.removeElements.length > 0) {
-        removePaywallElements(rule.removeElements);
-      } else {
-        // Use default selectors if no specific ones are provided
-        removePaywallElements(DEFAULT_PAYWALL_SELECTORS);
+      if (rule.enabled) {
+        // Apply element removal rules
+        if (rule.removeElements && rule.removeElements.length > 0) {
+          rule.removeElements.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              if (el instanceof HTMLElement) {
+                el.style.display = 'none';
+              }
+            });
+          });
+        }
+        
+        // Report bypass attempt
+        chrome.runtime.sendMessage({ type: 'BYPASS_ATTEMPT' });
+        
+        console.log(`Article Liberator Plus: Applied rules for ${rule.name}`);
       }
-      
-      // Apply custom CSS if defined for the site
-      if (rule.customCSS) {
-        const style = document.createElement('style');
-        style.id = 'article-liberator-custom-css';
-        style.textContent = rule.customCSS;
-        document.head.appendChild(style);
-      }
-    } else {
-      // Apply general rules
-      removePaywallElements(DEFAULT_PAYWALL_SELECTORS);
     }
-    
-    // Notify the background script of bypass attempt
-    chrome.runtime.sendMessage({ type: 'BYPASS_ATTEMPT' });
-    
-    console.log('Article Liberator Plus: Bypass attempt complete');
   } catch (error) {
-    console.error('Article Liberator Plus: Error bypassing paywall', error);
+    console.error('Article Liberator Plus: Error applying site rules', error);
   }
 }
 
-// Run on page load
-window.addEventListener('DOMContentLoaded', () => {
-  bypassPaywall();
+// Run bypass code when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    bypassPaywall();
+    applySiteRules();
+  }, 500);
 });
 
-// Also run on dynamic content changes
+// Run again after page is fully loaded to catch dynamic paywalls
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    bypassPaywall();
+    applySiteRules();
+  }, 1500);
+});
+
+// Monitor for dynamic changes and re-apply bypass techniques
 const observer = new MutationObserver(() => {
   bypassPaywall();
 });
 
-// Start observing once the DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+// Start observing after short delay
+setTimeout(() => {
   observer.observe(document.body, {
     childList: true,
     subtree: true
   });
-});
-
-// Initial run in case DOMContentLoaded already fired
-if (document.readyState === 'interactive' || document.readyState === 'complete') {
-  bypassPaywall();
-}
+}, 2000);

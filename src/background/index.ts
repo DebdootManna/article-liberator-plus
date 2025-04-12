@@ -79,50 +79,56 @@ async function initializeExtension() {
 
 // Listen for web requests to modify headers
 chrome.webRequest.onBeforeSendHeaders.addListener(
-  async (details) => {
-    const { settings, rules } = await chrome.storage.local.get(['settings', 'rules']);
-    
-    if (!settings?.enabled) return { requestHeaders: details.requestHeaders };
-    
-    const url = new URL(details.url);
-    const domain = url.hostname.replace('www.', '');
-    
-    // Find matching rule
-    const matchingRule = rules?.find((rule: SiteRule) => 
-      domain.includes(rule.domain) && rule.enabled
-    );
-    
-    if (matchingRule?.useGoogleBotUA && settings.googleBotEnabled) {
-      const googleBotUA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+  (details) => {
+    // Use an immediately invoked async function to handle the async operations
+    const modifyHeaders = async () => {
+      const { settings, rules } = await chrome.storage.local.get(['settings', 'rules']);
       
-      const requestHeaders = details.requestHeaders || [];
+      if (!settings?.enabled) return { requestHeaders: details.requestHeaders || [] };
       
-      // Remove existing User-Agent header
-      const uaIndex = requestHeaders.findIndex(header => 
-        header.name.toLowerCase() === 'user-agent'
+      const url = new URL(details.url);
+      const domain = url.hostname.replace('www.', '');
+      
+      // Find matching rule
+      const matchingRule = rules?.find((rule: SiteRule) => 
+        domain.includes(rule.domain) && rule.enabled
       );
       
-      if (uaIndex > -1) {
-        requestHeaders[uaIndex].value = googleBotUA;
-      } else {
-        requestHeaders.push({ name: 'User-Agent', value: googleBotUA });
+      if (matchingRule?.useGoogleBotUA && settings.googleBotEnabled) {
+        const googleBotUA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+        
+        const requestHeaders = details.requestHeaders || [];
+        
+        // Remove existing User-Agent header
+        const uaIndex = requestHeaders.findIndex(header => 
+          header.name.toLowerCase() === 'user-agent'
+        );
+        
+        if (uaIndex > -1) {
+          requestHeaders[uaIndex].value = googleBotUA;
+        } else {
+          requestHeaders.push({ name: 'User-Agent', value: googleBotUA });
+        }
+        
+        // Adjust referer
+        const refererIndex = requestHeaders.findIndex(header => 
+          header.name.toLowerCase() === 'referer'
+        );
+        
+        if (refererIndex > -1) {
+          requestHeaders[refererIndex].value = 'https://www.google.com/';
+        } else {
+          requestHeaders.push({ name: 'Referer', value: 'https://www.google.com/' });
+        }
+        
+        return { requestHeaders };
       }
       
-      // Adjust referer
-      const refererIndex = requestHeaders.findIndex(header => 
-        header.name.toLowerCase() === 'referer'
-      );
-      
-      if (refererIndex > -1) {
-        requestHeaders[refererIndex].value = 'https://www.google.com/';
-      } else {
-        requestHeaders.push({ name: 'Referer', value: 'https://www.google.com/' });
-      }
-      
-      return { requestHeaders };
-    }
-    
-    return { requestHeaders: details.requestHeaders };
+      return { requestHeaders: details.requestHeaders || [] };
+    };
+
+    // Return the result synchronously - this is what Chrome expects
+    return modifyHeaders() as unknown as chrome.webRequest.BlockingResponse;
   },
   { urls: ["<all_urls>"] },
   ["blocking", "requestHeaders"]
