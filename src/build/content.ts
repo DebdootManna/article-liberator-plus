@@ -4,3 +4,5 @@ import '../content/index';
 
 // Ensure Chrome types are available
 /// <reference types="chrome" />
+
+console.log('Content script loaded successfully');

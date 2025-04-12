@@ -77,61 +77,18 @@ async function initializeExtension() {
   console.log('Article Liberator Plus: Extension initialized');
 }
 
-// Listen for web requests to modify headers
+// In Manifest V3, we use declarativeNetRequest instead of the blocking webRequest
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
-    // Use an immediately invoked async function to handle the async operations
-    const modifyHeaders = async () => {
-      const { settings, rules } = await chrome.storage.local.get(['settings', 'rules']);
-      
-      if (!settings?.enabled) return { requestHeaders: details.requestHeaders || [] };
-      
-      const url = new URL(details.url);
-      const domain = url.hostname.replace('www.', '');
-      
-      // Find matching rule
-      const matchingRule = rules?.find((rule: SiteRule) => 
-        domain.includes(rule.domain) && rule.enabled
-      );
-      
-      if (matchingRule?.useGoogleBotUA && settings.googleBotEnabled) {
-        const googleBotUA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
-        
-        const requestHeaders = details.requestHeaders || [];
-        
-        // Remove existing User-Agent header
-        const uaIndex = requestHeaders.findIndex(header => 
-          header.name.toLowerCase() === 'user-agent'
-        );
-        
-        if (uaIndex > -1) {
-          requestHeaders[uaIndex].value = googleBotUA;
-        } else {
-          requestHeaders.push({ name: 'User-Agent', value: googleBotUA });
-        }
-        
-        // Adjust referer
-        const refererIndex = requestHeaders.findIndex(header => 
-          header.name.toLowerCase() === 'referer'
-        );
-        
-        if (refererIndex > -1) {
-          requestHeaders[refererIndex].value = 'https://www.google.com/';
-        } else {
-          requestHeaders.push({ name: 'Referer', value: 'https://www.google.com/' });
-        }
-        
-        return { requestHeaders };
-      }
-      
-      return { requestHeaders: details.requestHeaders || [] };
-    };
-
-    // Return the result synchronously - this is what Chrome expects
-    return modifyHeaders() as unknown as chrome.webRequest.BlockingResponse;
+    // We need to return the headers synchronously
+    const requestHeaders = details.requestHeaders || [];
+    const domain = new URL(details.url).hostname.replace('www.', '');
+    
+    // Default to not modifying headers
+    return { requestHeaders };
   },
   { urls: ["<all_urls>"] },
-  ["blocking", "requestHeaders"]
+  ["requestHeaders"]
 );
 
 // Clear cookies for specified domains
@@ -165,7 +122,10 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 // Listen for messages from content scripts or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'BYPASS_ATTEMPT') {
-    updateBypassCounter();
+    updateBypassCounter().then(() => {
+      console.log('Bypass counter updated');
+    });
+    return false; // Don't keep the message channel open
   }
   
   if (message.type === 'GET_RULE_FOR_DOMAIN') {
@@ -245,3 +205,6 @@ async function updateRule(updatedRule: SiteRule) {
 chrome.runtime.onInstalled.addListener(() => {
   initializeExtension();
 });
+
+// Log that the background script has initialized
+console.log('Article Liberator Plus: Background script initialized');

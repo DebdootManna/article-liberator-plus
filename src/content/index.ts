@@ -34,7 +34,7 @@ function bypassPaywall() {
 
   // Enable scrolling
   const htmlElement = document.querySelector('html');
-  if (htmlElement) {
+  if (htmlElement instanceof HTMLElement) {
     htmlElement.style.overflow = 'auto';
     htmlElement.style.height = 'auto';
   }
@@ -77,9 +77,9 @@ function bypassPaywall() {
 
 // Apply site-specific rules
 async function applySiteRules() {
-  const domain = window.location.hostname.replace('www.', '');
-  
   try {
+    const domain = window.location.hostname.replace('www.', '');
+    
     // Get rules from extension storage
     const response = await chrome.runtime.sendMessage({
       type: 'GET_RULE_FOR_DOMAIN',
@@ -141,3 +141,6 @@ setTimeout(() => {
     subtree: true
   });
 }, 2000);
+
+// Log that the content script has initialized
+console.log('Article Liberator Plus: Content script initialized');
