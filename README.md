@@ -1,4 +1,4 @@
-
+* This is still in development
 # Article Liberator Plus
 
 Article Liberator Plus is a Chrome extension that helps users bypass paywalls on news websites and other content platforms. This extension is designed to provide educational insights into web technologies and browser extension development.
